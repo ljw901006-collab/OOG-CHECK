@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OOG 선적판정</title>
+<style>
+:root{--bg:#eef2f7;--card:#fff;--fg:#17202c;--sub:#66727f;--line:#d8dfe8;--navy:#153a6b;--acc:#1f5fd1;
+  --ok:#11795a;--okbg:#e5f5ee;--warn:#a35a00;--warnbg:#fff3e0;--bad:#b42318;--badbg:#fdecea}
+@media (prefers-color-scheme:dark){:root{--bg:#10151c;--card:#19212b;--fg:#e6ebf1;--sub:#97a3b2;--line:#2b3542;--navy:#0d2547;--acc:#79a5ff;
+  --ok:#5fd3a5;--okbg:#123227;--warn:#ffb86b;--warnbg:#3a2a12;--bad:#ff8a80;--badbg:#3b1a18}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:'Malgun Gothic','Apple SD Gothic Neo',system-ui,sans-serif;font-size:14px}
+header{background:var(--navy);color:#fff;padding:18px 16px}
+header div{max-width:1100px;margin:0 auto}
+header h1{margin:0;font-size:20px} header p{margin:4px 0 0;font-size:12px;opacity:.8}
+main{max-width:1100px;margin:0 auto;padding:20px 16px 40px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px;margin-bottom:16px}
+.row{display:grid;grid-template-columns:repeat(5,minmax(0,1fr)) 150px 36px;gap:8px;align-items:end;margin-bottom:8px}
+label{display:block;font-size:12px;font-weight:600;color:var(--sub);margin-bottom:4px}
+input,select{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:8px;font-size:14px;background:var(--card);color:var(--fg);font-family:inherit}
+input:focus,select:focus{outline:2px solid var(--acc);outline-offset:-1px}
+.bar{display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin-top:6px}
+.bar .f{width:150px}
+button{padding:9px 16px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--fg);font-weight:600;cursor:pointer;font-family:inherit;font-size:14px}
+button.primary{background:var(--navy);border-color:var(--navy);color:#fff}
+button.x{padding:8px 0;color:var(--sub)}
+.hint{color:var(--sub);font-size:12px;margin:10px 0 0}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{padding:9px 8px;border-top:1px solid var(--line);text-align:left;vertical-align:top}
+th{color:var(--sub);font-weight:600;font-size:12px;border-top:0}
+td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+.badge{display:inline-block;padding:3px 9px;border-radius:999px;font-weight:700;font-size:12px;white-space:nowrap}
+.ok{background:var(--okbg);color:var(--ok)} .warn{background:var(--warnbg);color:var(--warn)} .bad{background:var(--badbg);color:var(--bad)}
+ul.why{margin:0;padding-left:16px} .sub{color:var(--sub);font-size:12px}
+.tbl{overflow-x:auto}
+.note{font-size:12px;color:var(--sub);line-height:1.6}
+@media (max-width:760px){.row{grid-template-columns:repeat(2,minmax(0,1fr))}.row .x{grid-column:span 2}}
+</style></head><body>
+<header><div><h1>OOG 선적판정</h1>
+<p>FR·OT·슈퍼랙 화물의 규격 적재 가능 여부와 선적지·도착지 기준 초과 여부를 판정합니다 · 기준: 부산고객지원팀 OOG 선적판정 기준(2026.9.29)</p></div></header>
+<main>
+<section class="card">
+  <div id="rows"></div>
+  <div class="bar">
+    <button type="button" id="add">＋ 화물 추가</button>
+    <div class="f"><label for="pol">선적지 (POL)</label><input id="pol" value="KRPUS" list="ports" autocomplete="off"></div>
+    <div class="f"><label for="pod">도착지 (POD)</label><input id="pod" placeholder="예) CNSHA" list="ports" autocomplete="off"></div>
+    <button type="button" class="primary" id="go">판정</button>
+  </div>
+  <datalist id="ports"></datalist>
+  <p class="hint">치수는 mm, 중량은 CARGO WEIGHT(TARE 제외)입니다. 규격을 "자동"으로 두면 길이로 20'FR / 40'FR을 고릅니다. 규격이 다른 화물은 ＋ 화물 추가로 줄을 늘려 한 번에 보세요.</p>
+</section>
+<section class="card" id="out" hidden>
+  <div class="tbl"><table><thead><tr>
+    <th>#</th><th>화물 (cm / t)</th><th>규격</th><th>판정</th><th>초과분 O/L · O/W(각) · O/H</th><th>총중량 / 무게한도</th><th>운임 태그</th><th>사유 · 참고</th>
+  </tr></thead><tbody id="tb"></tbody></table></div>
+  <p class="note" id="basis"></p>
+</section>
+<p class="note">※ 모든 판정은 참고용입니다. 최종 선적 여부는 도착지 터미널 회신과 부킹파트 컨펌으로 정해집니다.</p>
+</main>
+<script>
+const C={"_출처": "Desktop/OOG_판정기준_문의안내_정리.md (부산고객지원팀 2026-09-29, 부산 항만허브 OOG 선적판정 기준) — 판정용 값만 추출", "_주의": "모든 판정은 참고용. 최종 선적 여부는 도착지 터미널 회신·부킹파트 컨펌으로 정해진다.", "규격": {"22PC": {"이름": "20' FR", "작업길이_mm": 5600, "폭_mm": 2430, "높이_mm": 2210, "TARE_kg": 2800, "PAYLOAD_kg": 31200, "오버렝스허용": false, "허용하중곡선": [[1, 15.6], [2, 18.7], [4, 23.4], [6, 31.2]]}, "42PC": {"이름": "40' FR", "작업길이_mm": 11500, "폭_mm": 2430, "높이_mm": 1950, "TARE_kg": 4950, "PAYLOAD_kg": 40050, "오버렝스허용": true, "허용하중곡선": [[1, 25.4], [2, 25.7], [3, 26.1], [4, 26.7], [5, 27.4], [6, 28.4], [7, 29.5], [8, 30.9], [9, 32.6], [10, 34.6], [11, 37.0], [12, 39.9]]}, "45PC": {"이름": "40' SUPER RACK", "작업길이_mm": 11500, "폭_mm": 2430, "높이_mm": 2260, "TARE_kg": 5800, "PAYLOAD_kg": 50000, "오버렝스허용": true, "허용하중곡선": [[4.5, 29.2], [6, 33.4], [8, 38.9], [10, 46.1]]}, "22UT": {"이름": "20' OT", "작업길이_mm": 5800, "폭_mm": 2340, "높이_mm": 2360, "TARE_kg": 2200, "PAYLOAD_kg": 28130, "오버렝스허용": false, "OT바닥하중_t_m2": 0.9, "허용하중곡선": [[1, 4.8], [2, 9.6], [3, 14.4], [4, 19.2], [5, 24.0], [6, 28.8]]}, "42UT": {"이름": "40' OT", "작업길이_mm": 11900, "폭_mm": 2340, "높이_mm": 2360, "TARE_kg": 3800, "PAYLOAD_kg": 26740, "오버렝스허용": false, "OT바닥하중_t_m2": 0.9, "허용하중곡선": [[1, 3], [2, 6], [3, 9], [4, 12], [5, 15], [6, 18], [7, 21], [8, 23], [9, 26], [10, 28.4]]}}, "규격별칭": {"20FR": "22PC", "20'FR": "22PC", "22PC": "22PC", "40FR": "42PC", "40'FR": "42PC", "42PC": "42PC", "SUPERRACK": "45PC", "SUPER RACK": "45PC", "45PC": "45PC", "슈퍼랙": "45PC", "20OT": "22UT", "20'OT": "22UT", "22UT": "22UT", "40OT": "42UT", "40'OT": "42UT", "42UT": "42UT"}, "도착지기준": {"_설명": "초과분(O/W 좌우 각, O/H) cm 와 1대 총중량(TARE 포함) t 기준. 하나라도 해당하면 도착지 확인 대상. OVERLENGTH는 항상 확인 대상.", "CNSHA": {"폭_각_cm": 90, "높이_cm": 200, "총중량_t": 33, "_비고": "번석 모를 때 기준(가장 엄격). PIER#1·2 = 100/200/33, PIER#5 = 90/240/40"}, "일반": {"폭_각_cm": 80, "높이_cm": 100, "총중량_t": 33, "_비고": "상해 외 중국 포함 모든 항만"}, "일본": {"JPISS": {"항만": "ISHIKARI", "크레인능력_t": 30.5, "VGM한도_t": 30.3, "폭기준_각_cm": 100.0, "폭원문": "100", "높이기준_cm": 150.0, "높이원문": "150", "건별확인": true, "직상차조건": "-"}, "JPTMK": {"항만": "TOMAKOMAI", "크레인능력_t": 30.5, "VGM한도_t": 30.5, "폭기준_각_cm": 20.0, "폭원문": "20", "높이기준_cm": 20.0, "높이원문": "20", "건별확인": true, "직상차조건": "-"}, "JPKUH": {"항만": "KUSHIRO", "크레인능력_t": 30.5, "VGM한도_t": null, "폭기준_각_cm": null, "폭원문": "-", "높이기준_cm": null, "높이원문": "-", "건별확인": false, "직상차조건": "-"}, "JPSDJ": {"항만": "SENDAI", "크레인능력_t": 30.5, "VGM한도_t": 27.2, "폭기준_각_cm": 90.0, "폭원문": "90", "높이기준_cm": 205.0, "높이원문": "205", "건별확인": true, "직상차조건": "ALWAYS DIRECT DELIVERY / ALWAYS DIRECT DELIVERY"}, "JPONA": {"항만": "ONAHAMA", "크레인능력_t": 30.5, "VGM한도_t": null, "폭기준_각_cm": null, "폭원문": "-", "높이기준_cm": null, "높이원문": "-", "건별확인": false, "직상차조건": "-"}, "JPHHE": {"항만": "HACHINOHE", "크레인능력_t": 30.5, "VGM한도_t": 30.48, "폭기준_각_cm": 90.0, "폭원문": "90", "높이기준_cm": null, "높이원문": "-", "건별확인": false, "직상차조건": "-"}, "JPAXT": {"항만": "AKITA", "크레인능력_t": 35.6, "VGM한도_t": 30.0, "폭기준_각_cm": 30.0, "폭원문": "30", "높이기준_cm": 140.0, "높이원문": "140", "건별확인": true, "직상차조건": "-"}, "JPSKT": {"항만": "SAKATA", "크레인능력_t": 30.5, "VGM한도_t": 30.0, "폭기준_각_cm": null, "폭원문": "No Limitation", "높이기준_cm": null, "높이원문": "-", "건별확인": true, "직상차조건": "OH 100cm or OW 100cm / Over30ton"}, "JPTOS": {"항만": "TOYAMA", "크레인능력_t": 30.5, "VGM한도_t": 37.3, "폭기준_각_cm": 100.0, "폭원문": "100", "높이기준_cm": 140.0, "높이원문": "140", "건별확인": true, "직상차조건": "if any OOG / if any OOG"}, "JPNAO": {"항만": "NAOETSU", "크레인능력_t": 30.5, "VGM한도_t": 30.5, "폭기준_각_cm": 50.0, "폭원문": "50", "높이기준_cm": null, "높이원문": "-", "건별확인": false, "직상차조건": "-"}, "JPKIJ": {"항만": "NIIGATA", "크레인능력_t": 30.5, "VGM한도_t": 30.0, "폭기준_각_cm": 40.0, "폭원문": "40", "높이기준_cm": 180.0, "높이원문": "180", "건별확인": true, "직상차조건": "CASE BY CASE / CASE BY CASE"}, "JPSMN": {"항만": "SAKAI-MINATO", "크레인능력_t": 35.6, "VGM한도_t": 40.0, "폭기준_각_cm": 100.0, "폭원문": "100", "높이기준_cm": 200.0, "높이원문": "200", "건별확인": true, "직상차조건": "CASE BY CASE / CASE BY CASE"}, "JPMAI": {"항만": "MAIZURU", "크레인능력_t": 35.6, "VGM한도_t": 34.0, "폭기준_각_cm": 100.0, "폭원문": "100", "높이기준_cm": null, "높이원문": "-", "건별확인": true, "직상차조건": "if any OOG / if any OOG"}, "JPKNZ": {"항만": "KANAZAWA", "크레인능력_t": 30.5, "VGM한도_t": 30.5, "폭기준_각_cm": 80.0, "폭원문": "80", "높이기준_cm": 180.0, "높이원문": "180", "건별확인": true, "직상차조건": "no direct delivery / no direct delivery"}, "JPTRG": {"항만": "TSURUGA", "크레인능력_t": 30.5, "VGM한도_t": 30.5, "폭기준_각_cm": null, "폭원문": "NO LIMITATION", "높이기준_cm": null, "높이원문": "NO", "건별확인": true, "직상차조건": "If O/W"}, "JPHMD": {"항만": "HAMADA", "크레인능력_t": 35.6, "VGM한도_t": 34.0, "폭기준_각_cm": 100.0, "폭원문": "100", "높이기준_cm": null, "높이원문": "-", "건별확인": false, "직상차조건": "-"}, "JPKSM": {"항만": "KASHIMA", "크레인능력_t": 30.5, "VGM한도_t": 30.5, "폭기준_각_cm": 150.0, "폭원문": "150", "높이기준_cm": null, "높이원문": "-", "건별확인": true, "직상차조건": "N/A (NEED TO CHECK IN ADVANCE) / N/A (NEED TO CHECK IN ADVANCE)"}, "JPHIC": {"항만": "HITACHINAKA", "크레인능력_t": 40.6, "VGM한도_t": null, "폭기준_각_cm": null, "폭원문": "NO LIMITATION (CHECK EACH TIME)", "높이기준_cm": 180.0, "높이원문": "180", "건별확인": true, "직상차조건": "40':OH OVER180cm 20':OH(REGARDLESS OF DIMENSION) / VGM OVER 34TON"}, "JPTYO": {"항만": "TOKYO", "크레인능력_t": 35.6, "VGM한도_t": 35.6, "폭기준_각_cm": null, "폭원문": "NO LIMITATION", "높이기준_cm": null, "높이원문": "-", "건별확인": true, "직상차조건": "If any O/W, O/H"}, "JPYOK": {"항만": "YOKOHAMA", "크레인능력_t": 33.5, "VGM한도_t": 35.6, "폭기준_각_cm": null, "폭원문": "NO LIMITATION", "높이기준_cm": 170.0, "높이원문": "170", "건별확인": true, "직상차조건": "If any O/W, O/H"}, "JPNGO": {"항만": "NAGOYA", "크레인능력_t": 40.6, "VGM한도_t": 36.0, "폭기준_각_cm": null, "폭원문": "NO LIMITATION", "높이기준_cm": 190.0, "높이원문": "190", "건별확인": true, "직상차조건": "If any O/W / Over 35ton due to straddle carrier limite."}, "JPSMZ": {"항만": "SHIMIZU", "크레인능력_t": 30.5, "VGM한도_t": 30.0, "폭기준_각_cm": 100.0, "폭원문": "100", "높이기준_cm": 150.0, "높이원문": "150", "건별확인": true, "직상차조건": "Consultations on a case-by-case basis / Consultations on a case-by-case basis"}, "JPTHS": {"항만": "TOYOHASHI", "크레인능력_t": 30.5, "VGM한도_t": 30.5, "폭기준_각_cm": null, "폭원문": "NO LIMITATION", "높이기준_cm": 190.0, "높이원문": "190", "건별확인": true, "직상차조건": "NEED TO CHECK IN ADVANCE / NEED TO CHECK IN ADVANCE"}, "JPOSA": {"항만": "OSAKA", "크레인능력_t": 40.6, "VGM한도_t": 40.0, "폭기준_각_cm": 70.0, "폭원문": "70", "높이기준_cm": 150.0, "높이원문": "150", "건별확인": true, "직상차조건": "O/H over 50 or O/W over 25(each) / O/H over 50 or O/W over 26(each) / O/H over 50 or O/…"}, "JPUKB": {"항만": "KOBE", "크레인능력_t": 40.0, "VGM한도_t": 35.0, "폭기준_각_cm": 50.0, "폭원문": "50", "높이기준_cm": 190.0, "높이원문": "190", "건별확인": true, "직상차조건": "ALWAYS DIRECT DELIVERY / ALWAYS DIRECT DELIVERY"}, "JPIWK": {"항만": "IWAKUNI", "크레인능력_t": 30.5, "VGM한도_t": 30.48, "폭기준_각_cm": 100.0, "폭원문": "100", "높이기준_cm": 50.0, "높이원문": "50", "건별확인": true, "직상차조건": "-"}, "JPOTK": {"항만": "OTAKE", "크레인능력_t": 32.0, "VGM한도_t": null, "폭기준_각_cm": null, "폭원문": "-", "높이기준_cm": null, "높이원문": "-", "건별확인": false, "직상차조건": "-"}, "JPIYM": {"항만": "IYOMISHIMA", "크레인능력_t": 30.5, "VGM한도_t": 30.5, "폭기준_각_cm": 20.0, "폭원문": "20", "높이기준_cm": 180.0, "높이원문": "180", "건별확인": true, "직상차조건": "-"}, "JPTKS": {"항만": "TOKUSHIMA", "크레인능력_t": 30.5, "VGM한도_t": 30.5, "폭기준_각_cm": null, "폭원문": "NO LIMITATION", "높이기준_cm": 150.0, "높이원문": "150", "건별확인": true, "직상차조건": "-"}, "JPTAK": {"항만": "TAKAMATSU", "크레인능력_t": 30.5, "VGM한도_t": 30.5, "폭기준_각_cm": 60.0, "폭원문": "60", "높이기준_cm": null, "높이원문": "N/A (ALWAYS BY WIRE)", "건별확인": true, "직상차조건": "60 (each) / 24"}, "JPMYJ": {"항만": "MATSUYAMA", "크레인능력_t": 30.5, "VGM한도_t": 30.5, "폭기준_각_cm": null, "폭원문": "NEED TO CHECK IN ADVANCE", "높이기준_cm": null, "높이원문": "N/A (ALWAYS BY WIRE)", "건별확인": true, "직상차조건": "O/H over 10"}, "JPKCZ": {"항만": "KOCHI", "크레인능력_t": 30.5, "VGM한도_t": 30.5, "폭기준_각_cm": 100.0, "폭원문": "100", "높이기준_cm": null, "높이원문": "N/A (ALWAYS BY WIRE)", "건별확인": true, "직상차조건": "O/W over 100 (each)"}, "JPIMB": {"항만": "IMABARI", "크레인능력_t": 30.5, "VGM한도_t": null, "폭기준_각_cm": 100.0, "폭원문": "100", "높이기준_cm": null, "높이원문": "N/A (ALWAYS BY WIRE)", "건별확인": true, "직상차조건": "IF ANY O/W AND O/H, BOTH"}, "JPHIJ": {"항만": "HIROSHIMA", "크레인능력_t": 30.5, "VGM한도_t": 30.5, "폭기준_각_cm": 150.0, "폭원문": "150", "높이기준_cm": 180.0, "높이원문": "180", "건별확인": true, "직상차조건": "180/20', 160/40' / 38"}, "JPFKY": {"항만": "FUKUYAMA", "크레인능력_t": 30.5, "VGM한도_t": 30.5, "폭기준_각_cm": 50.0, "폭원문": "50", "높이기준_cm": null, "높이원문": "-", "건별확인": false, "직상차조건": "O/H over 150, O/W over 50 (each) / 30.5"}, "JPMIZ": {"항만": "MIZUSHIMA", "크레인능력_t": 30.5, "VGM한도_t": 30.5, "폭기준_각_cm": 150.0, "폭원문": "150", "높이기준_cm": 180.0, "높이원문": "180", "건별확인": true, "직상차조건": "-"}, "JPSHS": {"항만": "SHIMONOSEKI", "크레인능력_t": 26.6, "VGM한도_t": 30.5, "폭기준_각_cm": 195.0, "폭원문": "195", "높이기준_cm": 195.0, "높이원문": "195", "건별확인": true, "직상차조건": "-"}, "JPTKY": {"항만": "TOKUYAMA", "크레인능력_t": 30.5, "VGM한도_t": 30.5, "폭기준_각_cm": 100.0, "폭원문": "100", "높이기준_cm": null, "높이원문": "-", "건별확인": true, "직상차조건": "If any O/W"}, "JPKMJ": {"항만": "KUMAMOTO", "크레인능력_t": 30.5, "VGM한도_t": 30.5, "폭기준_각_cm": null, "폭원문": "NEED TO CHECK ONE BY ONE", "높이기준_cm": null, "높이원문": "-", "건별확인": true, "직상차조건": "If any O/W, O/H"}, "JPYAT": {"항만": "YATSUSHIRO", "크레인능력_t": 30.5, "VGM한도_t": 30.5, "폭기준_각_cm": 100.0, "폭원문": "100", "높이기준_cm": 150.0, "높이원문": "150", "건별확인": false, "직상차조건": "If any O/W, O/H"}, "JPSBS": {"항만": "SHIBUSHI", "크레인능력_t": 35.6, "VGM한도_t": 35.6, "폭기준_각_cm": null, "폭원문": "NO LIMITATION", "높이기준_cm": null, "높이원문": "-", "건별확인": true, "직상차조건": "If any O/W, O/H"}, "JPNGS": {"항만": "NAGASAKI", "크레인능력_t": 40.6, "VGM한도_t": 32.0, "폭기준_각_cm": null, "폭원문": "NEED TO CHECK ONE BY ONE", "높이기준_cm": null, "높이원문": "-", "건별확인": true, "직상차조건": "-"}, "JPHSM": {"항만": "HOSOSHIMA", "크레인능력_t": 30.5, "VGM한도_t": null, "폭기준_각_cm": 100.0, "폭원문": "100", "높이기준_cm": 130.0, "높이원문": "130", "건별확인": true, "직상차조건": "-"}, "JPMOJ": {"항만": "MOJI", "크레인능력_t": 30.5, "VGM한도_t": 30.5, "폭기준_각_cm": 228.0, "폭원문": "228", "높이기준_cm": 179.0, "높이원문": "179", "건별확인": true, "직상차조건": "O/W over 10 (each)/O/H over180"}, "JPHBK": {"항만": "HIBIKI", "크레인능력_t": 40.6, "VGM한도_t": 40.6, "폭기준_각_cm": 30.0, "폭원문": "30", "높이기준_cm": 100.0, "높이원문": "100", "건별확인": true, "직상차조건": "NEED TO CHECK ONE BY ONE"}, "JPHKT": {"항만": "HAKATA", "크레인능력_t": 40.6, "VGM한도_t": null, "폭기준_각_cm": null, "폭원문": "NO LIMITATION", "높이기준_cm": 195.0, "높이원문": "195", "건별확인": true, "직상차조건": "O/W over 5 (each)"}, "JPIMI": {"항만": "IMARI", "크레인능력_t": 35.6, "VGM한도_t": 35.6, "폭기준_각_cm": null, "폭원문": "NO LIMITATION", "높이기준_cm": 180.0, "높이원문": "180", "건별확인": true, "직상차조건": "-"}, "JPOIT": {"항만": "OITA", "크레인능력_t": 30.5, "VGM한도_t": 30.5, "폭기준_각_cm": 100.0, "폭원문": "100", "높이기준_cm": 20.0, "높이원문": "20", "건별확인": false, "직상차조건": "-"}, "JPSEN": {"항만": "SATSUMA SENDAI", "크레인능력_t": 30.5, "VGM한도_t": 30.5, "폭기준_각_cm": 50.0, "폭원문": "50", "높이기준_cm": null, "높이원문": "-", "건별확인": true, "직상차조건": "If any O/W, O/H"}, "JPMII": {"항만": "MIIKE", "크레인능력_t": 30.5, "VGM한도_t": 30.5, "폭기준_각_cm": null, "폭원문": "NEED TO CHECK ONE BY ONE", "높이기준_cm": null, "높이원문": "-", "건별확인": true, "직상차조건": "NEED TO CHECK ONE BY ONE / NEED TO CHECK ONE BY ONE"}}}, "도착지하역능력_t": {"KRPUS": {"7 Pier": 65.0, "HBCT": 70.0, "BIT": 51.0, "DPCT": 60.0, "KBCT": 60.0, "PNIT": 80.0, "PNC": 90.0, "HJNC": 90.0, "HPNT": 90.0, "BNMT": 90.0, "BNCT": 80.0}, "KRUSN": {"UNCT": 36.0, "KUCT": 32.0}, "KRKAN": {"HSGT": 50.0, "KIT": 61.0, "KEGWC": 40.0}, "KRMAS": {"MAS": 36.0}, "KRINC": {"E1CT": 50.0, "SNCT": 80.0}, "KRPTK": {"PCTC": 75.0, "PNCT": 75.0}, "KRKUV": {"GCT": 35.0}, "KRTSN": {"대산 동방": 45.0}, "KRKPO": {"PICT": 60.0}, "CNTSN": {"TPCT": 45.0}, "CNTAO": {"QQCT2기": 45.0, "QQCT3기": 60.0}, "CNDLC": {"DCT": 45.0}, "CNNKG": {"NKG": 40.0}, "CNZJG": {"ZJG": 61.0}, "CNWEI": {"#11-12": 36.0, "#18": 56.0}, "CNSHK": {"SCT": 50.0, "MCT": 50.0}, "CNFOC": {"JIANGYIN": 40.0}, "IDJKT": {"KOJA": 50.0, "JICT WEST": 40.0, "JICT NORTH": 50.0}, "IDSUB": {"Teluk Lamong": 35.0}, "MYPKL": {"WEST": 70.0, "CT1": 70.0}, "SGSIN": {"PSA": 35.0}, "MYPGU": {"JPB": 40.0}, "VNSGN": {"VICT": 44.5, "CATLAI": 44.5}, "VNHPH": {"DINH VU, TAN VU": 40.0, "GREEN PORT": 40.0, "CHUAVE": 40.0, "TAN CANG": 40.0}, "THLCH": {"LCB1": 40.0, "A0": 40.0, "A3": 40.0}, "THBKK": {"PAT": 38.0, "UNITHAI": 38.0}, "HKHKG": {"HIT": 45.0, "MID-S": 45.0}, "LKCMB": {"JCT": 36.0}, "CNHUA": {"GCT": 45.0}, "CNSWA": {"SWA": 41.0}, "TWKEL": {"ULIC": 35.0, "WEST": 50.0}, "TWKHH": {"#70": 40.0}, "RUVFP": {"VFP": 40.0}, "RUVST": {"VST": 40.0}, "RUVYP": {"VYP": 30.5}}};
+const SIZES=[["","자동 (FR)"],["22PC","20' FR"],["42PC","40' FR"],["45PC","40' SUPER RACK"],["22UT","20' OT"],["42UT","40' OT"]];
+const $=id=>document.getElementById(id);
+
+function curveLimit(c,m){if(m<=c[0][0])return c[0][1];for(let i=1;i<c.length;i++){const[x1,y1]=c[i-1],[x2,y2]=c[i];if(m<=x2)return y1+(y2-y1)*(m-x1)/(x2-x1)}return c[c.length-1][1]}
+function judgeSize(code,L,W,H,kg){
+  const s=C["규격"][code],ol=Math.max(0,L-s["작업길이_mm"])/10,oh=Math.max(0,H-s["높이_mm"])/10,ow=Math.max(0,(W-s["폭_mm"])/2)/10,t=kg/1000;
+  const limit=Math.min(s["PAYLOAD_kg"]/1000,curveLimit(s["허용하중곡선"],L/1000));
+  const r={code,name:s["이름"],ol:Math.round(ol),oh:Math.round(oh),ow:Math.round(ow),tot:Math.round((kg+s["TARE_kg"])/100)/10,limit:Math.round(limit*10)/10};
+  if(ol>0&&!s["오버렝스허용"]){r.v="불가";r.why=s["이름"]+"은 오버렝스를 받지 않음"}
+  else if(s["OT바닥하중_t_m2"]&&t/((L/1000)*(W/1000))>s["OT바닥하중_t_m2"]){r.v="불가";r.why="OT 바닥 평균하중 초과 → 40' FR 변경 필요"}
+  else if(t>limit){r.v="불가";r.why=`화물중량 ${+t.toFixed(2)}t > 무게한도 ${limit.toFixed(1)}t`}
+  else r.v=(ol||oh||ow)?"OOG로 가능":"가능(규격 내)";
+  return r}
+function frTag(L,W,H){const code=L<=C["규격"]["22PC"]["작업길이_mm"]?"22PC":"42PC",s=C["규격"][code],oh=H>s["높이_mm"],ow=W>s["폭_mm"];
+  const tag=oh&&ow?"FV":oh?"OH":ow?"OW":"IN";return `${code==="22PC"?"20":"40"}FR(${tag})`+(L>s["작업길이_mm"]?" +OVERLENGTH":"")}
+function capMin(p){const c=C["도착지하역능력_t"][p];return c?Math.min(...Object.values(c)):null}
+function podCheck(pod,r){
+  const why=[],std=C["도착지기준"];if(r.ol>0)why.push("OVERLENGTH");
+  const j=std["일본"][pod];
+  if(j){
+    if(j["폭기준_각_cm"]!=null){if(r.ow>=j["폭기준_각_cm"])why.push("폭 초과")}
+    else if(r.ow>0&&!(j["폭원문"]||"").toUpperCase().includes("NO LIMITATION")&&!["-",""].includes(j["폭원문"]))why.push("폭 건별 확인");
+    if(j["높이기준_cm"]!=null){if(r.oh>=j["높이기준_cm"])why.push("높이 초과")}
+    else if(r.oh>0&&!["-","","NO"].includes(j["높이원문"]))why.push("높이 건별 확인");
+    const w=j["VGM한도_t"]||j["크레인능력_t"];if(w&&r.tot>=w)why.push("총중량 초과");
+    if(j["건별확인"]&&(r.ol||r.oh||r.ow))why.push("일본 항만 OOG 건별 확인");
+  }else{const b=std[pod]||std["일반"];if(r.ow>=b["폭_각_cm"])why.push("폭 초과");if(r.oh>=b["높이_cm"])why.push("높이 초과");if(r.tot>=b["총중량_t"])why.push("총중량 초과")}
+  const m=capMin(pod);if(m&&r.tot>m)why.push(`도착지 하역능력(${m}t) 초과`);
+  return[...new Set(why)]}
+function polNote(pol,r){const c=C["도착지하역능력_t"][pol];if(!c)return null;const m=Math.min(...Object.values(c));if(r.tot<=m)return null;
+  const okT=Object.entries(c).filter(([,v])=>v>=r.tot).map(([k])=>k);
+  return okT.length?`선적지 일부 터미널 하역능력 미달 — 가능 터미널: ${okT.join(", ")}`:`선적지 터미널 하역능력(최대 ${Math.max(...Object.values(c))}t) 초과`}
+
+function addRow(v={}){const d=document.createElement("div");d.className="row";
+  d.innerHTML=`<div><label>길이 (mm)</label><input inputmode="numeric" class="L" placeholder="예) 11500"></div>
+  <div><label>폭 (mm)</label><input inputmode="numeric" class="W" placeholder="예) 2400"></div>
+  <div><label>높이 (mm)</label><input inputmode="numeric" class="H" placeholder="예) 1900"></div>
+  <div><label>화물중량 (kg)</label><input inputmode="numeric" class="K" placeholder="예) 38000"></div>
+  <div><label>수량</label><input inputmode="numeric" class="Q" value="1"></div>
+  <div><label>규격</label><select class="S">${SIZES.map(([k,n])=>`<option value="${k}">${n}</option>`).join("")}</select></div>
+  <button type="button" class="x" title="이 줄 삭제">✕</button>`;
+  d.querySelector(".x").onclick=()=>{if($("rows").children.length>1)d.remove()};
+  for(const k in v){const el=d.querySelector("."+k);if(el)el.value=v[k]}
+  $("rows").appendChild(d)}
+const num=s=>parseFloat(String(s).replace(/[, ]/g,""));
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
+
+function run(){
+  const pod=$("pod").value.trim().toUpperCase(),pol=$("pol").value.trim().toUpperCase();
+  if(!pod){$("pod").focus();return}
+  const rows=[...$("rows").children].map(d=>({L:num(d.querySelector(".L").value),W:num(d.querySelector(".W").value),H:num(d.querySelector(".H").value),
+    K:num(d.querySelector(".K").value),Q:num(d.querySelector(".Q").value)||1,S:d.querySelector(".S").value}));
+  const html=[];
+  rows.forEach((x,i)=>{
+    if(![x.L,x.W,x.H,x.K].every(n=>n>0)){html.push(`<tr><td>${i+1}</td><td colspan="7" class="sub">길이·폭·높이·중량을 모두 넣어 주세요.</td></tr>`);return}
+    const code=x.S||(x.L<=C["규격"]["22PC"]["작업길이_mm"]?"22PC":"42PC");
+    const r=judgeSize(code,x.L,x.W,x.H,x.K);
+    const why=r.v==="불가"?[r.why]:podCheck(pod,r);
+    const alt=[];if(r.v==="불가")for(const c of["42PC","45PC"])if(c!==code){const y=judgeSize(c,x.L,x.W,x.H,x.K);if(y.v!=="불가"&&!podCheck(pod,y).length)alt.push(y.name)}
+    const pn=r.v==="불가"?null:polNote(pol,r);
+    const cls=r.v==="불가"?"bad":why.length?"warn":"ok";
+    const label=r.v==="불가"?"규격 불가":why.length?"도착지 확인 필요":r.v==="가능(규격 내)"?"허용 (규격 내)":"허용 (OOG)";
+    const notes=[...why.map(esc)];if(pn)notes.push(esc(pn));if(alt.length)notes.push("가능한 다른 규격: "+esc(alt.join(", ")));
+    html.push(`<tr><td>${i+1}</td>
+      <td class="num">${x.L/10}×${x.W/10}×${x.H/10}<br><span class="sub">${+(x.K/1000).toFixed(2)}t × ${x.Q}</span></td>
+      <td>${esc(r.name)}<br><span class="sub">${code}</span></td>
+      <td><span class="badge ${cls}">${label}</span></td>
+      <td class="num">${r.ol} · ${r.ow} · ${r.oh} cm</td>
+      <td class="num">${r.tot}t / ${r.limit}t<br><span class="sub">총중량은 TARE 포함</span></td>
+      <td class="num">${frTag(x.L,x.W,x.H)}</td>
+      <td>${notes.length?`<ul class="why">${notes.map(n=>`<li>${n}</li>`).join("")}</ul>`:'<span class="sub">기준 이내</span>'}</td></tr>`)});
+  $("tb").innerHTML=html.join("");
+  const jp=C["도착지기준"]["일본"][pod];
+  const basis=jp?`일본 항만별 기준 (${jp["항만"]})`:pod==="CNSHA"?"상해 기준 (폭 각 90cm · 높이 200cm · 총중량 33t, 번석 모를 때 가장 엄격)":"일반 기준 (폭 각 80cm · 높이 100cm · 총중량 33t)";
+  const cap=C["도착지하역능력_t"][pod];
+  $("basis").textContent=`${pol} → ${pod} · 도착지 판정 기준: ${basis}`+(cap?` · 도착지 터미널 하역능력: ${Object.entries(cap).map(([k,v])=>k+" "+v+"t").join(", ")}`:"");
+  $("out").hidden=false;
+  try{localStorage.setItem("oog-last",JSON.stringify({pol,pod}))}catch(_){}
+}
+(function init(){
+  const ports=new Set([...Object.keys(C["도착지하역능력_t"]),...Object.keys(C["도착지기준"]["일본"]),"CNSHA"]);
+  $("ports").innerHTML=[...ports].sort().map(p=>{const j=C["도착지기준"]["일본"][p];return `<option value="${p}">${j?j["항만"]:""}</option>`}).join("");
+  addRow();
+  try{const s=JSON.parse(localStorage.getItem("oog-last")||"null");if(s){$("pol").value=s.pol||"KRPUS";$("pod").value=s.pod||""}}catch(_){}
+  $("add").onclick=()=>addRow();$("go").onclick=run;
+  document.addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.tagName==="INPUT")run()});
+})();
+</script></body></html>
